@@ -1,15 +1,25 @@
-// SoCUte: A macro assembler for the Sega Saturn SCU DSP.
+use std::iter::Peekable;
+
+// SoCUte: An assembler for the Sega Saturn SCU DSP.
 //
 // Copyright (c) 2025 Matt Young.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL
 // was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
-use logos::Logos;
+use logos::{Lexer, Logos, Skip};
+use strum::AsRefStr;
 
-#[derive(Logos, Debug, PartialEq)]
+/// Drops the last character from the string. Used to drop ':' from labels. Slow!
+fn drop_last(string: String) -> String {
+    let mut new = string.clone();
+    new.pop();
+    return new
+}
+
+#[derive(Logos, Debug, PartialEq, Eq, AsRefStr, Clone)]
 #[logos(skip r"[ \t\n\f]+")] // Ignore this regex pattern between tokens
 #[logos(error = String)]
-enum ScuDspToken {
+pub enum ScuDspToken {
     // Generic instrs
     #[regex("(?i)nop")]
     Nop,
@@ -120,20 +130,25 @@ enum ScuDspToken {
     Jmp,
 
     // Generic tokens
-    #[regex("[a-zA-Z][a-zA-Z0-9_]*")]
-    Ident,
+    #[regex("[a-zA-Z][a-zA-Z0-9_]*", |lex| lex.slice().to_owned())]
+    Ident(String),
 
-    #[regex("[#|\\$]?[0-9]+")]
-    Num,
+    #[regex("[#|\\$]?[0-9]+", |lex| lex.slice().to_owned())]
+    Num(String),
 
-    #[regex("[a-zA-Z][a-zA-Z0-9_]*:")]
-    Label,
+    #[regex("[a-zA-Z][a-zA-Z0-9_]*:",  |lex| drop_last(lex.slice().to_owned()))]
+    Label(String),
 
-    #[regex(";[^\n]*")]
+    #[regex(";[^\n]*", |_| Skip)]
     Comment,
 
     #[token(",")]
     Comma,
+}
+
+/// Lexes an asm document
+pub fn lex(document: &'static str) -> Peekable<Lexer<'static, ScuDspToken>> {
+    return ScuDspToken::lexer(document).peekable();
 }
 
 #[cfg(test)]
@@ -146,30 +161,30 @@ mod tests {
     #[test]
     fn test_comment() {
         let mut lex = ScuDspToken::lexer("; comment");
-        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Comment)));
+        assert_eq!(lex.next(), None);
     }
 
     #[test]
     fn test_mov_comment() {
         let mut lex = ScuDspToken::lexer("mov ; comment");
         assert_eq!(lex.next(), Some(Ok(ScuDspToken::Mov)));
-        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Comment)));
+        assert_eq!(lex.next(), None);
     }
 
     #[test]
     fn test_mov_comment_case_sensitive() {
         let mut lex = ScuDspToken::lexer("MOV ; coMMeNT");
         assert_eq!(lex.next(), Some(Ok(ScuDspToken::Mov)));
-        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Comment)));
+        assert_eq!(lex.next(), None);
     }
 
     #[test]
     fn test_label_or_ident() {
         let mut lex = ScuDspToken::lexer("x:");
-        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Label)));
+        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Label("x".into()))));
 
         let mut lex = ScuDspToken::lexer("xident");
-        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Ident)));
+        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Ident("xident".into()))));
     }
 
     #[test]
@@ -195,16 +210,14 @@ mod tests {
         "#;
 
         let mut lex = ScuDspToken::lexer(doc);
-        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Comment)));
         assert_eq!(lex.next(), Some(Ok(ScuDspToken::Mov)));
-        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Num)));
+        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Num("$1".into()))));
         assert_eq!(lex.next(), Some(Ok(ScuDspToken::Comma)));
-        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Ident)));
+        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Ident("ident".into()))));
 
-        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Label)));
+        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Label("label".into()))));
         assert_eq!(lex.next(), Some(Ok(ScuDspToken::Jmp)));
         assert_eq!(lex.next(), Some(Ok(ScuDspToken::Nt0)));
-        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Comment)));
 
         assert_eq!(lex.next(), None);
     }
