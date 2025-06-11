@@ -4,11 +4,8 @@ use clap::{Parser, Subcommand};
 use color_eyre::eyre::Result;
 use env_logger::{Builder, Env};
 use log::{error, info};
-use pest_derive::Parser as PestDeriveParser;
 
-#[derive(PestDeriveParser)]
-#[grammar = "grammar.pest"]
-pub struct ScuAsmParser;
+pub mod tokeniser;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -55,65 +52,4 @@ fn main() -> color_eyre::Result<()> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    // Note this useful idiom: importing names from outer (for mod tests) scope.
-    use super::*;
-    use pest::Parser;
-
-    #[test]
-    fn test_blank() -> color_eyre::Result<()> {
-        ScuAsmParser::parse(Rule::document, "\n")?;
-        Ok(())
-    }
-
-    #[test]
-    fn test_double_newline() -> color_eyre::Result<()> {
-        ScuAsmParser::parse(Rule::document, "add\n\n")?;
-        Ok(())
-    }
-
-    #[test]
-    fn test_comment_line() -> color_eyre::Result<()> {
-        ScuAsmParser::parse(Rule::document, "; comment\n; comment 2\n")?;
-        Ok(())
-    }
-
-    #[test]
-    fn test_comment_inline() -> color_eyre::Result<()> {
-        ScuAsmParser::parse(Rule::document, "; comment\nadd\nxor\nad2 ; comment\n")?;
-        Ok(())
-    }
-
-    #[test]
-    fn test_label() -> color_eyre::Result<()> {
-        ScuAsmParser::parse(Rule::document, "label:\n    add\n")?;
-        Ok(())
-    }
-
-    #[test]
-    fn test_label_and_comment() -> color_eyre::Result<()> {
-        ScuAsmParser::parse(Rule::document, "label: ; comment\n    add\n")?;
-        Ok(())
-    }
-
-    #[test]
-    fn test_comment_and_label() -> color_eyre::Result<()> {
-        ScuAsmParser::parse(Rule::document, "; comment label:\n    add\n")?;
-        Ok(())
-    }
-
-    #[test]
-    fn test_alu() -> color_eyre::Result<()> {
-        ScuAsmParser::parse(Rule::document, "add\nxor\nad2\n")?;
-        Ok(())
-    }
-
-    #[test]
-    fn test_arg_spacing() -> color_eyre::Result<()> {
-        ScuAsmParser::parse(Rule::document, "jmp t0,dma_wait\n")?;
-        Ok(())
-    }
 }
