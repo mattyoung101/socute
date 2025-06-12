@@ -11,8 +11,11 @@ use color_eyre::eyre::Result;
 use env_logger::{Builder, Env};
 use log::{error, info};
 
+use crate::tokeniser::lex;
+
 pub mod tokeniser;
 pub mod parser;
+pub mod emitter;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -55,6 +58,8 @@ fn main() -> color_eyre::Result<()> {
             let mut f = File::open(src)?;
             let mut string = String::new();
             f.read_to_string(&mut string)?;
+
+            // let tokens = lex(string.as_str());
         }
         Commands::Version {} => {
             println!("SoCUte v{VERSION}: Sega Saturn SCU DSP Assembler",);

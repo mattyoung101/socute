@@ -9,12 +9,13 @@
 // - https://en.wikipedia.org/wiki/Recursive_descent_parser#C_implementation
 // - https://github.com/maciejhirsz/logos/issues/82
 
-use std::iter::Peekable;
-
+use bit_ops::BitOps;
 use color_eyre::eyre::eyre;
+use log::debug;
 use logos::Lexer;
+use std::{cell::RefCell, iter::Peekable, rc::Rc};
 
-use crate::tokeniser::ScuDspToken;
+use crate::{emitter::Program, tokeniser::ScuDspToken};
 
 type T = ScuDspToken;
 
@@ -32,6 +33,26 @@ const ALU_TOKENS: &'static [&'static T] = &[
     &T::Sl,
     &T::Rl,
     &T::Rl8,
+];
+
+/// All instruction tokens
+const INSTR_TOKENS: &'static [&'static T] = &[
+    &T::Nop,
+    &T::And,
+    &T::Or,
+    &T::Xor,
+    &T::Add,
+    &T::Sub,
+    &T::Ad2,
+    &T::Sr,
+    &T::Rr,
+    &T::Sl,
+    &T::Rl,
+    &T::Rl8,
+    &T::Mov,
+    &T::Mvi,
+    &T::Dma,
+    &T::Jmp,
 ];
 
 fn accept(tok: &ScuDspToken, lexer: &mut Peekable<Lexer<ScuDspToken>>) -> color_eyre::Result<bool> {
@@ -75,39 +96,41 @@ fn token_str(lexer: &mut Peekable<Lexer<ScuDspToken>>) -> color_eyre::Result<Str
     match &tok {
         T::Label(lab) => Ok(format!("{} '{}'", tok.as_ref(), lab)),
         T::Ident(lab) => Ok(format!("{} '{}'", tok.as_ref(), lab)),
-        _ => Ok(tok.as_ref().into())
+        T::Num(lab) => Ok(format!("{} '{}'", tok.as_ref(), lab)),
+        _ => Ok(tok.as_ref().into()),
     }
 }
 
 // ALU control commands
-fn alu(lexer: &mut Peekable<Lexer<ScuDspToken>>) -> color_eyre::Result<()> {
+fn alu(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_eyre::Result<()> {
+    debug!("Parse ALU instr");
     if accept(&T::Nop, lexer)? {
-        // emit
+        prog.emit(0);
     } else if accept(&T::And, lexer)? {
-        // emit
+        prog.emit_bit(26);
     } else if accept(&T::Or, lexer)? {
-        // emit
+        prog.emit_bit(27);
     } else if accept(&T::Xor, lexer)? {
-        // emit
+        prog.emit_bits(vec![26, 27]);
     } else if accept(&T::Add, lexer)? {
-        // emit
+        prog.emit_bit(28);
     } else if accept(&T::Sub, lexer)? {
-        // emit
+        prog.emit_bits(vec![26, 28]);
     } else if accept(&T::Ad2, lexer)? {
-        // emit
+        prog.emit_bits(vec![27, 28]);
     } else if accept(&T::Sr, lexer)? {
-        // emit
+        prog.emit_bit(29);
     } else if accept(&T::Rr, lexer)? {
-        // emit
+        prog.emit_bits(vec![26, 29]);
     } else if accept(&T::Sl, lexer)? {
-        // emit
+        prog.emit_bits(vec![27, 29]);
     } else if accept(&T::Rl, lexer)? {
-        // emit
+        prog.emit_bits(vec![26, 27, 29]);
     } else if accept(&T::Rl8, lexer)? {
-        // emit
+        prog.emit_bits(vec![26, 27, 28, 29]);
     } else {
         return Err(eyre!(
-            "Could not parse ALU command at {}",
+            "Could not parse ALU command near {}",
             token_str(lexer)?
         ));
     }
@@ -115,15 +138,30 @@ fn alu(lexer: &mut Peekable<Lexer<ScuDspToken>>) -> color_eyre::Result<()> {
     Ok(())
 }
 
-fn instr(lexer: &mut Peekable<Lexer<ScuDspToken>>) -> color_eyre::Result<()> {
-    let tok= token(lexer)?;
+fn instr(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_eyre::Result<()> {
+    let tok = token(lexer)?;
+    debug!("Parse instr near {}", tok.as_ref());
     if ALU_TOKENS.contains(&&tok) {
-        alu(lexer)?;
+        alu(lexer, prog)?;
     } else {
         return Err(eyre!(
-            "Could not parse instruction at {}",
+            "Could not parse instruction near {}",
             token_str(lexer)?
         ));
+    }
+
+    Ok(())
+}
+
+fn document(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_eyre::Result<()> {
+    while lexer.peek().is_some() {
+        let tok = token(lexer)?;
+        // first try match a define
+        // then try a label
+        // now look for instructions
+        if INSTR_TOKENS.contains(&&tok) {
+            instr(lexer, prog)?;
+        }
     }
 
     Ok(())
@@ -131,8 +169,8 @@ fn instr(lexer: &mut Peekable<Lexer<ScuDspToken>>) -> color_eyre::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use logos::Lexer;
     use super::*;
+    use logos::Lexer;
 
     use crate::tokeniser::lex;
 
@@ -143,7 +181,8 @@ mod tests {
             xor ; another one
         "#;
         let mut tokens = lex(document);
-        let _ = instr(&mut tokens)?;
+        let mut prog = Program::default();
+        let _ = instr(&mut tokens, &mut prog)?;
 
         Ok(())
     }

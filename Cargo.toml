@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 ansi_term = { version = "0.12.1", features = ["serde"] }
+bit_ops = "0.1.16"
 chumsky = "0.10.1"
 clap = { version = "4.5.40", features = ["derive"] }
 color-eyre = "0.6.5"
