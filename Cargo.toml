@@ -1,12 +1,15 @@
 [package]
 name = "socute"
+description = "Sega Saturn SCU DSP assembler"
 version = "0.1.0"
 edition = "2024"
+author = "Matt Young"
+homepage = "https://github.com/mattyoung101/socute"
+repository = "https://github.com/mattyoung101/socute"
+license = "MPL-2.0"
 
 [dependencies]
-ansi_term = { version = "0.12.1", features = ["serde"] }
 bit_ops = "0.1.16"
-chumsky = "0.10.1"
 clap = { version = "4.5.40", features = ["derive"] }
 color-eyre = "0.6.5"
 env_logger = "0.11.8"

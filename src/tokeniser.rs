@@ -15,9 +15,10 @@ fn drop_last(string: String) -> String {
     return new
 }
 
+// TODO we also do want to lex newline (instructions are packed on each line)
+
 #[derive(Logos, Debug, PartialEq, Eq, AsRefStr, Clone)]
-#[logos(skip r"[ \t\n\f]+")] // Ignore this regex pattern between tokens
-#[logos(error = String)]
+#[logos(skip r"[ \t]+")] // Ignore this regex pattern between tokens
 pub enum ScuDspToken {
     // Generic instrs
     #[regex("(?i)nop")]
@@ -25,6 +26,36 @@ pub enum ScuDspToken {
 
     #[regex("(?i)mov")]
     Mov,
+
+    #[regex("(?i)alh")]
+    Alh,
+
+    #[regex("(?i)all")]
+    All,
+
+    #[regex("(?i)m0")]
+    M0,
+
+    #[regex("(?i)m1")]
+    M1,
+
+    #[regex("(?i)m2")]
+    M2,
+
+    #[regex("(?i)m3")]
+    M3,
+
+    #[regex("(?i)mc0")]
+    Mc0,
+
+    #[regex("(?i)mc1")]
+    Mc1,
+
+    #[regex("(?i)mc2")]
+    Mc2,
+
+    #[regex("(?i)mc3")]
+    Mc3,
 
     // ALU control
     #[regex("(?i)and")]
@@ -121,6 +152,9 @@ pub enum ScuDspToken {
     #[regex("(?i)dma")]
     Dma,
 
+    #[regex("(?i)dmah")]
+    Dmah,
+
     #[regex("(?i)d0")]
     D0,
 
@@ -128,13 +162,45 @@ pub enum ScuDspToken {
     #[regex("(?i)jmp")]
     Jmp,
 
+    // Loop
+    #[regex("(?i)btm")]
+    Btm,
+
+    #[regex("(?i)lps")]
+    Lps,
+
+    // End
+    #[regex("(?i)end")]
+    End,
+
+    #[regex("(?i)endi")]
+    Endi,
+
+    // Macros
+    #[regex("(?i)equ")]
+    Equ,
+
+    #[regex("(?i)org")]
+    Org,
+
+    #[regex("(?i)ends")]
+    Ends,
+
+    #[regex("(?i)if")]
+    If,
+
+    #[regex("(?i)ifdef")]
+    Ifdef,
+
     // Generic tokens
     #[regex("[a-zA-Z][a-zA-Z0-9_]*", |lex| lex.slice().to_owned())]
     Ident(String),
 
-    #[regex("[#|\\$]?[0-9]+", |lex| lex.slice().to_owned())]
+    // $xx = hex, xx = decimal, %xx = binary
+    #[regex("[#|\\$|%]?[0-9]+", |lex| lex.slice().to_owned())]
     Num(String),
 
+    // label must start with alpha but can otherwise use whatever
     #[regex("[a-zA-Z][a-zA-Z0-9_]*:",  |lex| drop_last(lex.slice().to_owned()))]
     Label(String),
 
@@ -143,10 +209,13 @@ pub enum ScuDspToken {
 
     #[token(",")]
     Comma,
+
+    #[regex("[\r]?\n+")]
+    Newline,
 }
 
 /// Lexes an asm document
-pub fn lex(document: &'static str) -> Peekable<Lexer<'static, ScuDspToken>> {
+pub fn lex<'l>(document: &'l str) -> Peekable<Lexer<'l, ScuDspToken>> {
     return ScuDspToken::lexer(document).peekable();
 }
 
@@ -200,23 +269,33 @@ mod tests {
 
     #[test]
     fn test_full_document() {
-        let doc = r#"
-            ; comment
-            MOV $1, ident
-
+        let doc = r#"; comment
+            MOV $1, ident       MOV $2, ALU
             label:
                 jmp nt0 ; inline comment
         "#;
 
         let mut lex = ScuDspToken::lexer(doc);
+        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Newline)));
+
         assert_eq!(lex.next(), Some(Ok(ScuDspToken::Mov)));
         assert_eq!(lex.next(), Some(Ok(ScuDspToken::Num("$1".into()))));
         assert_eq!(lex.next(), Some(Ok(ScuDspToken::Comma)));
         assert_eq!(lex.next(), Some(Ok(ScuDspToken::Ident("ident".into()))));
 
+        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Mov)));
+        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Num("$2".into()))));
+        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Comma)));
+        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Alu)));
+
+        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Newline)));
+
         assert_eq!(lex.next(), Some(Ok(ScuDspToken::Label("label".into()))));
+        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Newline)));
+
         assert_eq!(lex.next(), Some(Ok(ScuDspToken::Jmp)));
         assert_eq!(lex.next(), Some(Ok(ScuDspToken::Nt0)));
+        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Newline)));
 
         assert_eq!(lex.next(), None);
     }

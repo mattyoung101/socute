@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 
 use bit_ops::BitOps;
+use log::info;
 
 #[derive(Default, Clone, Debug)]
 pub struct Program {
@@ -39,5 +40,11 @@ impl Program {
 
     pub fn add_label(&mut self, label: String) {
         self.labels.insert(label, self.pc);
+    }
+
+    pub fn debug_dump(&self) {
+        for (i, opcode) in self.prog.iter().enumerate() {
+            info!("[{}] {:#032b}", i, opcode);
+        }
     }
 }

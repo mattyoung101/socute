@@ -9,9 +9,9 @@ use std::{fs::File, io::{BufReader, Read}, path::PathBuf};
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::Result;
 use env_logger::{Builder, Env};
-use log::{error, info};
+use log::{debug, error, info};
 
-use crate::tokeniser::lex;
+use crate::{emitter::Program, parser::document, tokeniser::lex};
 
 pub mod tokeniser;
 pub mod parser;
@@ -21,15 +21,21 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    /// Compiles a single SCU DSP assembly file
-    Compile {
-        #[arg(long)]
+    /// Assemble a single SCU DSP source file
+    Asm {
         /// Source file
         src: PathBuf,
 
-        #[arg(long)]
         /// Destination file
         dest: PathBuf,
+
+        #[arg(long, action)]
+        /// If true, enforces strict compatibility with the original assembler (not supported yet)
+        strict: bool,
+
+        #[arg(long, action)]
+        /// Print parser debug information
+        debug: bool,
     },
 
     /// Prints version information.
@@ -49,20 +55,22 @@ struct SoCuteCli {
 
 fn main() -> color_eyre::Result<()> {
     let args = SoCuteCli::parse();
-    let env = Env::new().filter_or("RUST_LOG", "info");
+    let env = Env::new().filter_or("RUST_LOG", "debug");
     Builder::from_env(env).init();
     color_eyre::install()?;
 
     match args.command {
-        Commands::Compile { src, dest } => {
+        Commands::Asm { src, dest, strict, debug } => {
             let mut f = File::open(src)?;
             let mut string = String::new();
             f.read_to_string(&mut string)?;
 
-            // let tokens = lex(string.as_str());
+            let mut tokens = lex(string.as_str());
+            let mut prog = Program::default();
+            document(&mut tokens, &mut prog)?;
         }
         Commands::Version {} => {
-            println!("SoCUte v{VERSION}: Sega Saturn SCU DSP Assembler",);
+            println!("SoCUte v{VERSION}: Sega Saturn SCU DSP Assembler <https://github.com/mattyoung101/socute>");
             println!("Copyright (c) 2025 Matt Young. Mozilla Public License v2.0.");
         }
     }
