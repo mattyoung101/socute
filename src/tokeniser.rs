@@ -4,15 +4,15 @@
 //
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL
 // was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
-use std::iter::Peekable;
 use logos::{Lexer, Logos, Skip};
+use std::iter::Peekable;
 use strum::AsRefStr;
 
 /// Drops the last character from the string. Used to drop ':' from labels. Slow!
 fn drop_last(string: String) -> String {
     let mut new = string.clone();
     new.pop();
-    return new
+    new
 }
 
 // TODO we also do want to lex newline (instructions are packed on each line)
@@ -231,12 +231,11 @@ impl ScuDspToken {
 
 /// Lexes an asm document
 pub fn lex<'l>(document: &'l str) -> Peekable<Lexer<'l, ScuDspToken>> {
-    return ScuDspToken::lexer(document).peekable();
+    ScuDspToken::lexer(document).peekable()
 }
 
 #[cfg(test)]
 mod tests {
-    use logos::Lexer;
 
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;

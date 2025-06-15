@@ -10,18 +10,17 @@
 // - https://github.com/maciejhirsz/logos/issues/82
 
 use bit_ops::BitOps;
-use clap::Error;
 use color_eyre::eyre::eyre;
 use log::debug;
 use logos::Lexer;
-use std::{cell::RefCell, i8, iter::Peekable, rc::Rc};
+use std::{i8, iter::Peekable};
 
 use crate::{emitter::Program, tokeniser::ScuDspToken};
 
 type T = ScuDspToken;
 
 /// All ALU tokens
-const ALU_TOKENS: &'static [&'static T] = &[
+const ALU_TOKENS: &[&T] = &[
     &T::Nop,
     &T::And,
     &T::Or,
@@ -37,13 +36,13 @@ const ALU_TOKENS: &'static [&'static T] = &[
 ];
 
 /// All loop tokens
-const LOOP_TOKENS: &'static [&'static T] = &[&T::Btm, &T::Lps];
+const LOOP_TOKENS: &[&T] = &[&T::Btm, &T::Lps];
 
 /// All end tokens
-const END_TOKENS: &'static [&'static T] = &[&T::End, &T::Endi];
+const END_TOKENS: &[&T] = &[&T::End, &T::Endi];
 
 /// All instruction tokens
-const INSTR_TOKENS: &'static [&'static T] = &[
+const INSTR_TOKENS: &[&T] = &[
     &T::Nop,
     &T::And,
     &T::Or,
@@ -83,33 +82,29 @@ fn accept(tok: &ScuDspToken, lexer: &mut Peekable<Lexer<ScuDspToken>>) -> color_
         }
     }
 
-    return Ok(false);
+    Ok(false)
 }
 
 fn expect(tok: &ScuDspToken, lexer: &mut Peekable<Lexer<ScuDspToken>>) -> color_eyre::Result<bool> {
-    if accept(&tok, lexer)? {
+    if accept(tok, lexer)? {
         return Ok(true);
     }
-    return Err(eyre!(
+    Err(eyre!(
         "Syntax error: Expected {} but got {}",
         &tok.as_ref(),
         token_str(lexer)?
-    ));
+    ))
 }
 
 /// Returns, but does not remove, the token at the current position in the lexer
 fn token(lexer: &mut Peekable<Lexer<ScuDspToken>>) -> color_eyre::Result<ScuDspToken> {
     if let Some(stream) = lexer.peek() {
         match stream {
-            Ok(tok) => {
-                return Ok(tok.clone());
-            }
-            Err(_) => {
-                return Err(eyre!("Lexer error"));
-            }
+            Ok(tok) => Ok(tok.clone()),
+            Err(_) => Err(eyre!("Lexer error")),
         }
     } else {
-        return Err(eyre!("Error: Unexpected end of input"));
+        Err(eyre!("Error: Unexpected end of input"))
     }
 }
 
@@ -117,15 +112,11 @@ fn token(lexer: &mut Peekable<Lexer<ScuDspToken>>) -> color_eyre::Result<ScuDspT
 fn token_pop(lexer: &mut Peekable<Lexer<ScuDspToken>>) -> color_eyre::Result<ScuDspToken> {
     if let Some(stream) = lexer.next() {
         match stream {
-            Ok(tok) => {
-                return Ok(tok.clone());
-            }
-            Err(_) => {
-                return Err(eyre!("Lexer error"));
-            }
+            Ok(tok) => Ok(tok.clone()),
+            Err(_) => Err(eyre!("Lexer error")),
         }
     } else {
-        return Err(eyre!("Error: Unexpected end of input"));
+        Err(eyre!("Error: Unexpected end of input"))
     }
 }
 
@@ -151,7 +142,7 @@ fn num(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_ey
             if num_str.starts_with('$') {
                 // hex
                 num_str.remove(0);
-                return Ok(u32::from_str_radix(num_str.as_str(), 16)?);
+                Ok(u32::from_str_radix(num_str.as_str(), 16)?)
             } else if num_str.starts_with('#') {
                 // decimal?
                 num_str.remove(0);
@@ -351,15 +342,15 @@ fn mov(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_ey
         }
 
         // otherwise, illegal
-        return Err(eyre!(
+        Err(eyre!(
             "Syntax error: Illegal source for MOV instruction, got: {}",
             token_str(lexer)?
-        ));
+        ))
     } else {
-        return Err(eyre!(
+        Err(eyre!(
             "Syntax error: Could not parse MOV instruction near {}",
             token_str(lexer)?
-        ));
+        ))
     }
 }
 
@@ -482,8 +473,6 @@ pub fn document(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use log::info;
-    use logos::Lexer;
 
     use crate::tokeniser::lex;
 
@@ -492,7 +481,7 @@ mod tests {
         let document = r#"xor ; another one"#;
         let mut tokens = lex(document);
         let mut prog = Program::default();
-        let _ = instr(&mut tokens, &mut prog)?;
+        instr(&mut tokens, &mut prog)?;
 
         Ok(())
     }
@@ -502,7 +491,7 @@ mod tests {
         let document = r#"mov mul, p ;;; another other one"#;
         let mut tokens = lex(document);
         let mut prog = Program::default();
-        let _ = instr(&mut tokens, &mut prog)?;
+        instr(&mut tokens, &mut prog)?;
 
         Ok(())
     }
@@ -518,7 +507,7 @@ mod tests {
         "#;
         let mut tokens = lex(doc);
         let mut prog = Program::default();
-        let _ = document(&mut tokens, &mut prog)?;
+        document(&mut tokens, &mut prog)?;
 
         Ok(())
     }
@@ -536,7 +525,7 @@ mod tests {
         "#;
         let mut tokens = lex(doc);
         let mut prog = Program::default();
-        let _ = document(&mut tokens, &mut prog)?;
+        document(&mut tokens, &mut prog)?;
         prog.debug_dump();
 
         Ok(())
