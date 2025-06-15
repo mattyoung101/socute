@@ -10,10 +10,11 @@
 // - https://github.com/maciejhirsz/logos/issues/82
 
 use bit_ops::BitOps;
+use clap::Error;
 use color_eyre::eyre::eyre;
 use log::debug;
 use logos::Lexer;
-use std::{cell::RefCell, iter::Peekable, rc::Rc};
+use std::{cell::RefCell, i8, iter::Peekable, rc::Rc};
 
 use crate::{emitter::Program, tokeniser::ScuDspToken};
 
@@ -35,8 +36,11 @@ const ALU_TOKENS: &'static [&'static T] = &[
     &T::Rl8,
 ];
 
-/// All X-Bus tokens
-const XBUS_TOKENS: &'static [&'static T] = &[&T::Nop, &T::Mov];
+/// All loop tokens
+const LOOP_TOKENS: &'static [&'static T] = &[&T::Btm, &T::Lps];
+
+/// All end tokens
+const END_TOKENS: &'static [&'static T] = &[&T::End, &T::Endi];
 
 /// All instruction tokens
 const INSTR_TOKENS: &'static [&'static T] = &[
@@ -56,12 +60,19 @@ const INSTR_TOKENS: &'static [&'static T] = &[
     &T::Mvi,
     &T::Dma,
     &T::Jmp,
+    &T::Clr,
+    &T::Btm,
+    &T::Lps,
+    &T::End,
+    &T::Endi,
 ];
 
 #[derive(PartialEq, Eq)]
-enum XBusMov {
+enum MovDestination {
     X,
     P,
+    Y,
+    A,
 }
 
 fn accept(tok: &ScuDspToken, lexer: &mut Peekable<Lexer<ScuDspToken>>) -> color_eyre::Result<bool> {
@@ -130,6 +141,34 @@ fn token_str(lexer: &mut Peekable<Lexer<ScuDspToken>>) -> color_eyre::Result<Str
     }
 }
 
+fn num(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_eyre::Result<u32> {
+    if !token(lexer)?.is_number() {
+        return Err(eyre!("Syntax error: Expected number"));
+    }
+
+    match token_pop(lexer)? {
+        T::Num(mut num_str) => {
+            if num_str.starts_with('$') {
+                // hex
+                num_str.remove(0);
+                return Ok(u32::from_str_radix(num_str.as_str(), 16)?);
+            } else if num_str.starts_with('#') {
+                // decimal?
+                num_str.remove(0);
+                return Ok(num_str.parse()?);
+            } else if num_str.starts_with('%') {
+                // binary
+                num_str.remove(0);
+                return Ok(u32::from_str_radix(num_str.as_str(), 2)?);
+            } else {
+                // also decimal
+                return Ok(num_str.parse()?);
+            }
+        }
+        _ => Err(eyre!("Syntax error: Expected number")),
+    }
+}
+
 // ALU control commands
 fn alu(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_eyre::Result<()> {
     debug!("Parse ALU instr");
@@ -167,48 +206,73 @@ fn alu(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_ey
     Ok(())
 }
 
-fn emit_xbus_mov(address: &ScuDspToken, mov_type: XBusMov, prog: &mut Program) -> color_eyre::Result<()> {
-    let opcode: u32 = if mov_type == XBusMov::P {
+fn emit_mov(
+    address: &ScuDspToken,
+    mov: MovDestination,
+    prog: &mut Program,
+) -> color_eyre::Result<()> {
+    let opcode: u32 = if mov == MovDestination::P {
         // MOV [s], P
         0_u32.set_bit(23).set_bit(24)
-    } else {
+    } else if mov == MovDestination::X {
         // MOV [s], X
         0_u32.set_bit(25)
+    } else if mov == MovDestination::Y {
+        // MOV [s], Y
+        0_u32.set_bit(19)
+    } else {
+        panic!("Internal error: Unhandled branch in emit_mov calc opcode");
+    };
+
+    // now calculate the offset where we set bits to encode the destination address
+    // for example, SCU user manual pp. 109 (pdf pp. 125), for MOV [s], P; we start setting bits at
+    // bit 20
+    let offset: u32 = if mov == MovDestination::P || mov == MovDestination::X {
+        20
+    } else if mov == MovDestination::Y || mov == MovDestination::A {
+        14
+    } else {
+        panic!("Internal error: Unreachable branch in emit_mov calc offset");
     };
 
     match address {
         ScuDspToken::M0 => {
             // DATA RAM0
             prog.emit(opcode); // 000
-        },
+        }
         ScuDspToken::M1 => {
             // DATA RAM1
-            prog.emit(opcode.set_bit(20)); // 001
-        },
+            prog.emit(opcode.set_bit(offset)); // 001
+        }
         ScuDspToken::M2 => {
             // DATA RAM2
-            prog.emit(opcode.set_bit(21)); // 010
-        },
+            prog.emit(opcode.set_bit(offset + 1)); // 010
+        }
         ScuDspToken::M3 => {
             // DATA RAM3
-            prog.emit(opcode.set_bit(20).set_bit(21)); // 011
-        },
+            prog.emit(opcode.set_bit(offset).set_bit(offset + 1)); // 011
+        }
         ScuDspToken::Mc0 => {
             // DATA RAM0, CT0++
-            prog.emit(opcode.set_bit(22)); // 100
-        },
+            prog.emit(opcode.set_bit(offset + 2)); // 100
+        }
         ScuDspToken::Mc1 => {
             // DATA RAM1, CT1++
-            prog.emit(opcode.set_bit(22).set_bit(20)); // 101
-        },
+            prog.emit(opcode.set_bit(offset + 2).set_bit(offset)); // 101
+        }
         ScuDspToken::Mc2 => {
             // DATA RAM2, CT2++
-            prog.emit(opcode.set_bit(22).set_bit(21)); // 110
-        },
+            prog.emit(opcode.set_bit(offset + 2).set_bit(offset + 1)); // 110
+        }
         ScuDspToken::Mc3 => {
             // DATA RAM3, CT3++
-            prog.emit(opcode.set_bit(22).set_bit(21).set_bit(20)); // 111
-        },
+            prog.emit(
+                opcode
+                    .set_bit(offset + 2)
+                    .set_bit(offset + 1)
+                    .set_bit(offset),
+            ); // 111
+        }
         _ => {
             return Err(eyre!(
                 "Syntax error: Illegal X-Bus MOV destination address, got: {}",
@@ -220,18 +284,41 @@ fn emit_xbus_mov(address: &ScuDspToken, mov_type: XBusMov, prog: &mut Program) -
     Ok(())
 }
 
-// X-Bus control commands
-fn xbus(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_eyre::Result<()> {
-    debug!("Parse X-Bus instr");
-    if accept(&T::Nop, lexer)? {
-        prog.emit(0);
-    } else if accept(&T::Mov, lexer)? {
+fn emit_mov_simm(
+    lexer: &mut Peekable<Lexer<ScuDspToken>>,
+    prog: &mut Program,
+) -> color_eyre::Result<()> {
+    let value = num(lexer, prog)?;
+
+    if value >= i8::MAX as u32 {
+        return Err(eyre!(
+            "Error: '{value}' will not fit in signed 8-bit immediate value (in MOV SImm, [d])"
+        ));
+    }
+
+    // let word = 0_u32.set_bits_exact(value as i8, 8, 0);
+
+    Ok(())
+}
+
+// MOV instructions
+fn mov(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_eyre::Result<()> {
+    debug!("Parse bus control instr");
+    if accept(&T::Mov, lexer)? {
         // MOV MUL, P
         if accept(&T::Mul, lexer)? {
             expect(&T::Comma, lexer)?;
             expect(&T::P, lexer)?;
             prog.emit_bit(24);
-            return Ok(())
+            return Ok(());
+        }
+
+        // MOV ALU, A
+        if accept(&T::Alu, lexer)? {
+            expect(&T::Comma, lexer)?;
+            expect(&T::A, lexer)?;
+            prog.emit_bit(18);
+            return Ok(());
         }
 
         // Otherwise, we expect a memory address
@@ -241,24 +328,102 @@ fn xbus(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_e
 
         // MOV [s], X
         if accept(&T::X, lexer)? {
-            emit_xbus_mov(&tok, XBusMov::X, prog)?;
+            emit_mov(&tok, MovDestination::X, prog)?;
             return Ok(());
         }
+
         // MOV [s], P
         if accept(&T::P, lexer)? {
-            emit_xbus_mov(&tok, XBusMov::P, prog)?;
+            emit_mov(&tok, MovDestination::P, prog)?;
+            return Ok(());
+        }
+
+        // MOV [s], Y
+        if accept(&T::Y, lexer)? {
+            emit_mov(&tok, MovDestination::P, prog)?;
+            return Ok(());
+        }
+
+        // MOV SImm, [d]
+        if token(lexer)?.is_number() {
+            emit_mov_simm(lexer, prog)?;
             return Ok(());
         }
 
         // otherwise, illegal
         return Err(eyre!(
-            "Syntax error: Illegal destination for X-Bus MOV instruction, expected X or P but got: {}",
+            "Syntax error: Illegal source for MOV instruction, got: {}",
             token_str(lexer)?
         ));
     } else {
         return Err(eyre!(
-            "Syntax error: Could not parse X-Bus control command near {}",
+            "Syntax error: Could not parse MOV instruction near {}",
             token_str(lexer)?
+        ));
+    }
+}
+
+fn clr(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_eyre::Result<()> {
+    debug!("Parse CLR A");
+    expect(&T::Clr, lexer)?;
+    expect(&T::A, lexer)?;
+    prog.emit_bit(17);
+    Ok(())
+}
+
+fn loop_cmd(
+    lexer: &mut Peekable<Lexer<ScuDspToken>>,
+    prog: &mut Program,
+) -> color_eyre::Result<()> {
+    debug!("Parse loop");
+
+    if accept(&T::Btm, lexer)? {
+        prog.emit_bits(vec![31, 30, 29]);
+    } else if accept(&T::Lps, lexer)? {
+        prog.emit_bits(vec![31, 30, 29, 27]);
+    } else {
+        return Err(eyre!(
+            "Syntax error: Could not parse loop (BTM/LPS) instruction near {}",
+            token_str(lexer)?
+        ));
+    }
+
+    // manual pp. 91 (pdf pp. 107) seems to imply that END and LOOP type instructions are
+    // completely separate to the normal bundle. The normal bundle can contain ALU, {X,Y,D1}-bus
+    // control, but it seems that END and LOOP must be on their own. Hence, we expect a newline to
+    // be issued.
+    if !accept(&T::Newline, lexer)? {
+        return Err(eyre!(
+            "Syntax error: Expected a newline after LPS/BTM. \
+            These instructions must be issued on their own, not as part of a bundle."
+        ));
+    }
+
+    Ok(())
+}
+
+fn end(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_eyre::Result<()> {
+    debug!("Parse end");
+
+    if accept(&T::End, lexer)? {
+        prog.emit_bits(vec![31, 30, 29, 28]);
+    } else if accept(&T::Endi, lexer)? {
+        prog.emit_bits(vec![31, 30, 29, 28, 27]);
+    } else {
+        return Err(eyre!(
+            "Syntax error: Could not parse END instruction near {}",
+            token_str(lexer)?
+        ));
+    }
+
+    // manual pp. 91 (pdf pp. 107) seems to imply that END and LOOP type instructions are
+    // completely separate to the normal bundle. The normal bundle can contain ALU, {X,Y,D1}-bus
+    // control, but it seems that END and LOOP must be on their own. Hence, we expect a newline to
+    // be issued.
+    if !accept(&T::Newline, lexer)? {
+        return Err(eyre!(
+            "Syntax error: Expected a newline after END/ENDI. \
+            These instructions must be issued on their own, not as part of a bundle."
         ));
     }
 
@@ -269,9 +434,16 @@ fn instr(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_
     let tok = token(lexer)?;
     debug!("Parse instr near {}", tok.as_ref());
     if ALU_TOKENS.contains(&&tok) {
+        // NOTE: This will also handle NOP
         alu(lexer, prog)?;
-    } else if XBUS_TOKENS.contains(&&tok) {
-        xbus(lexer, prog)?;
+    } else if tok == T::Mov {
+        mov(lexer, prog)?;
+    } else if tok == T::Clr {
+        clr(lexer, prog)?;
+    } else if LOOP_TOKENS.contains(&&tok) {
+        loop_cmd(lexer, prog)?;
+    } else if END_TOKENS.contains(&&tok) {
+        end(lexer, prog)?;
     } else {
         return Err(eyre!(
             "Syntax error: Could not parse instruction near {}",
@@ -339,11 +511,65 @@ mod tests {
     fn test_mov_s_p() -> color_eyre::Result<()> {
         let _ = env_logger::try_init();
 
-        let doc = "MOV MC3,X\nMOV M3,P";
+        let doc = r#"
+            MOV MC3,X
+            MOV M3,P
+            CLR A
+        "#;
+        let mut tokens = lex(doc);
+        let mut prog = Program::default();
+        let _ = document(&mut tokens, &mut prog)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_with_end() -> color_eyre::Result<()> {
+        let _ = env_logger::try_init();
+
+        let doc = r#"
+            MOV MC3,X       MOV M3,P    MOV M0, Y
+            CLR A
+            ENDI
+
+            CLR A
+        "#;
         let mut tokens = lex(doc);
         let mut prog = Program::default();
         let _ = document(&mut tokens, &mut prog)?;
         prog.debug_dump();
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_end_must_be_on_its_own() -> color_eyre::Result<()> {
+        let _ = env_logger::try_init();
+
+        let doc = r#"
+            CLR A
+            ENDI    CLR A
+        "#;
+        let mut tokens = lex(doc);
+        let mut prog = Program::default();
+        let res = document(&mut tokens, &mut prog);
+        assert!(res.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_btm_must_be_on_its_own() -> color_eyre::Result<()> {
+        let _ = env_logger::try_init();
+
+        let doc = r#"
+            CLR A
+            BTM     CLR A
+        "#;
+        let mut tokens = lex(doc);
+        let mut prog = Program::default();
+        let res = document(&mut tokens, &mut prog);
+        assert!(res.is_err());
 
         Ok(())
     }

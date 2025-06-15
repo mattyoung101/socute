@@ -44,7 +44,7 @@ impl Program {
 
     pub fn debug_dump(&self) {
         for (i, opcode) in self.prog.iter().enumerate() {
-            info!("[{}] {:#032b}", i, opcode);
+            info!("[{}] {:#034b} {:#010x}", i, opcode, opcode);
         }
     }
 }

@@ -105,8 +105,8 @@ pub enum ScuDspToken {
     #[regex("(?i)y", priority = 3)]
     Y,
 
-    #[regex(r#"(?i)clr[ \t\n\f]+a"#)]
-    ClrA,
+    #[regex(r#"(?i)clr"#)]
+    Clr,
 
     #[regex("(?i)alu")]
     Alu,
@@ -192,11 +192,17 @@ pub enum ScuDspToken {
     #[regex("(?i)ifdef")]
     Ifdef,
 
+    #[regex("(?i)endif")]
+    Endif,
+
+    #[token("=")]
+    Equals,
+
     // Generic tokens
     #[regex("[a-zA-Z][a-zA-Z0-9_]*", |lex| lex.slice().to_owned())]
     Ident(String),
 
-    // $xx = hex, xx = decimal, %xx = binary
+    // $xx = hex, #xx = decimal, %xx = binary
     #[regex("[#|\\$|%]?[0-9]+", |lex| lex.slice().to_owned())]
     Num(String),
 
@@ -210,8 +216,17 @@ pub enum ScuDspToken {
     #[token(",")]
     Comma,
 
+    #[token("\\")]
+    Backslash,
+
     #[regex("[\r]?\n+")]
     Newline,
+}
+
+impl ScuDspToken {
+    pub fn is_number(&self) -> bool {
+        matches!(self, ScuDspToken::Num(_))
+    }
 }
 
 /// Lexes an asm document
@@ -258,13 +273,15 @@ mod tests {
     #[test]
     fn test_clr_a() {
         let mut lex = ScuDspToken::lexer("CLR A");
-        assert_eq!(lex.next(), Some(Ok(ScuDspToken::ClrA)));
+        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Clr)));
+        assert_eq!(lex.next(), Some(Ok(ScuDspToken::A)));
 
         let mut lex = ScuDspToken::lexer("clr   a");
-        assert_eq!(lex.next(), Some(Ok(ScuDspToken::ClrA)));
+        assert_eq!(lex.next(), Some(Ok(ScuDspToken::Clr)));
+        assert_eq!(lex.next(), Some(Ok(ScuDspToken::A)));
 
         let mut lex = ScuDspToken::lexer("clra");
-        assert_ne!(lex.next(), Some(Ok(ScuDspToken::ClrA)));
+        assert_ne!(lex.next(), Some(Ok(ScuDspToken::Clr)));
     }
 
     #[test]

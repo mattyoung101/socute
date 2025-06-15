@@ -64,6 +64,8 @@ fn main() -> color_eyre::Result<()> {
             let mut f = File::open(src)?;
             let mut string = String::new();
             f.read_to_string(&mut string)?;
+            // add extra newline in case file doesn't have its own
+            string += "\n";
 
             let mut tokens = lex(string.as_str());
             let mut prog = Program::default();
