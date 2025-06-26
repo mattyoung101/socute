@@ -15,7 +15,10 @@ use log::debug;
 use logos::Lexer;
 use std::{i8, iter::Peekable};
 
-use crate::{emitter::Program, tokeniser::ScuDspToken};
+use crate::{
+    emitter::{InstrType, Program},
+    tokeniser::ScuDspToken,
+};
 
 type T = ScuDspToken;
 
@@ -193,6 +196,7 @@ fn alu(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_ey
             token_str(lexer)?
         ));
     }
+    prog.register_emitted(InstrType::ALU);
 
     Ok(())
 }
@@ -225,6 +229,13 @@ fn emit_mov(
     } else {
         panic!("Internal error: Unreachable branch in emit_mov calc offset");
     };
+
+    match mov {
+        MovDestination::X => prog.register_emitted(InstrType::X_BUS),
+        MovDestination::P => prog.register_emitted(InstrType::X_BUS),
+        MovDestination::Y => prog.register_emitted(InstrType::Y_BUS),
+        MovDestination::A => prog.register_emitted(InstrType::Y_BUS),
+    }
 
     match address {
         ScuDspToken::M0 => {
@@ -266,7 +277,7 @@ fn emit_mov(
         }
         _ => {
             return Err(eyre!(
-                "Syntax error: Illegal X-Bus MOV destination address, got: {}",
+                "Syntax error: Illegal MOV destination address, got: {}",
                 address.as_ref()
             ));
         }
@@ -289,6 +300,8 @@ fn emit_mov_simm(
 
     // let word = 0_u32.set_bits_exact(value as i8, 8, 0);
 
+    // TODO
+
     Ok(())
 }
 
@@ -301,6 +314,8 @@ fn mov(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_ey
             expect(&T::Comma, lexer)?;
             expect(&T::P, lexer)?;
             prog.emit_bit(24);
+            // this is an X-bus instr (datasheet pp. 108, pdf pp. 124)
+            prog.register_emitted(InstrType::X_BUS);
             return Ok(());
         }
 
@@ -309,6 +324,8 @@ fn mov(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_ey
             expect(&T::Comma, lexer)?;
             expect(&T::A, lexer)?;
             prog.emit_bit(18);
+            // this is a Y-bus instruction (datasheet pp. 114, pdf pp. 114)
+            prog.register_emitted(InstrType::Y_BUS);
             return Ok(());
         }
 
@@ -331,7 +348,7 @@ fn mov(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_ey
 
         // MOV [s], Y
         if accept(&T::Y, lexer)? {
-            emit_mov(&tok, MovDestination::P, prog)?;
+            emit_mov(&tok, MovDestination::Y, prog)?;
             return Ok(());
         }
 
@@ -359,6 +376,7 @@ fn clr(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_ey
     expect(&T::Clr, lexer)?;
     expect(&T::A, lexer)?;
     prog.emit_bit(17);
+    prog.register_emitted(InstrType::Y_BUS);
     Ok(())
 }
 
@@ -378,6 +396,9 @@ fn loop_cmd(
             token_str(lexer)?
         ));
     }
+
+    // this probably isn't necessary since we force a newline anyway below, but just in case
+    prog.register_emitted(InstrType::FLOW_CONTROL);
 
     // manual pp. 91 (pdf pp. 107) seems to imply that END and LOOP type instructions are
     // completely separate to the normal bundle. The normal bundle can contain ALU, {X,Y,D1}-bus
@@ -406,6 +427,9 @@ fn end(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_ey
             token_str(lexer)?
         ));
     }
+
+    // this probably isn't necessary since we force a newline anyway below, but just in case
+    prog.register_emitted(InstrType::FLOW_CONTROL);
 
     // manual pp. 91 (pdf pp. 107) seems to imply that END and LOOP type instructions are
     // completely separate to the normal bundle. The normal bundle can contain ALU, {X,Y,D1}-bus
@@ -451,21 +475,36 @@ pub fn document(
 ) -> color_eyre::Result<()> {
     while lexer.peek().is_some() {
         let tok = token(lexer)?;
-        debug!("document looking at {}", tok.as_ref());
+        debug!("TOK: {}", tok.as_ref());
 
-        // skip newlines
         if tok == T::Newline {
+            // finalise the current bundle
+            prog.flush()?;
+            // skip newline
             lexer.next();
             continue;
         }
 
         // first try match a define
+        // TODO
+
         // then try a label
+        if tok.is_label() {
+            // TODO
+            lexer.next();
+            continue;
+        }
+
         // now look for instructions
         if INSTR_TOKENS.contains(&&tok) {
+            // begin a new bundle if we haven't already
+            prog.begin_if_not_begun();
             instr(lexer, prog)?;
         }
     }
+
+    // end of document, flush final instruction (if one exists)
+    prog.flush()?;
 
     Ok(())
 }
@@ -476,12 +515,32 @@ mod tests {
 
     use crate::tokeniser::lex;
 
+    fn expect_failing_program(doc: &'static str, msg: &'static str) {
+        let _ = env_logger::try_init();
+
+        let mut tokens = lex(doc);
+        let mut prog = Program::default();
+        let res = document(&mut tokens, &mut prog);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().contains(msg));
+    }
+
+    fn validate_program(doc: &'static str) -> color_eyre::Result<()> {
+        let mut tokens = lex(doc);
+        let mut prog = Program::default();
+        document(&mut tokens, &mut prog)?;
+
+        Ok(())
+    }
+
     #[test]
     fn test_parse_alu() -> color_eyre::Result<()> {
         let document = r#"xor ; another one"#;
         let mut tokens = lex(document);
         let mut prog = Program::default();
+        prog.begin();
         instr(&mut tokens, &mut prog)?;
+        prog.flush()?;
 
         Ok(())
     }
@@ -491,74 +550,80 @@ mod tests {
         let document = r#"mov mul, p ;;; another other one"#;
         let mut tokens = lex(document);
         let mut prog = Program::default();
+        prog.begin();
         instr(&mut tokens, &mut prog)?;
+        prog.flush()?;
 
         Ok(())
     }
 
     #[test]
     fn test_mov_s_p() -> color_eyre::Result<()> {
-        let _ = env_logger::try_init();
-
-        let doc = r#"
-            MOV MC3,X
-            MOV M3,P
+        validate_program(
+            r#"
+            MOV MC3,X   MOV M3,P
             CLR A
-        "#;
-        let mut tokens = lex(doc);
-        let mut prog = Program::default();
-        document(&mut tokens, &mut prog)?;
+        "#,
+        )?;
 
         Ok(())
     }
 
     #[test]
     fn test_with_end() -> color_eyre::Result<()> {
-        let _ = env_logger::try_init();
-
-        let doc = r#"
+        validate_program(
+            r#"
             MOV MC3,X       MOV M3,P    MOV M0, Y
             CLR A
             ENDI
 
             CLR A
-        "#;
-        let mut tokens = lex(doc);
-        let mut prog = Program::default();
-        document(&mut tokens, &mut prog)?;
-        prog.debug_dump();
+        "#,
+        )?;
 
         Ok(())
     }
 
     #[test]
-    fn test_end_must_be_on_its_own() -> color_eyre::Result<()> {
-        let _ = env_logger::try_init();
-
-        let doc = r#"
+    fn test_end_must_be_on_its_own() {
+        expect_failing_program(
+            r#"
             CLR A
             ENDI    CLR A
-        "#;
-        let mut tokens = lex(doc);
-        let mut prog = Program::default();
-        let res = document(&mut tokens, &mut prog);
-        assert!(res.is_err());
-
-        Ok(())
+        "#,
+            "must be issued on their own",
+        );
     }
 
     #[test]
-    fn test_btm_must_be_on_its_own() -> color_eyre::Result<()> {
-        let _ = env_logger::try_init();
-
-        let doc = r#"
+    fn test_btm_must_be_on_its_own() {
+        expect_failing_program(
+            r#"
             CLR A
             BTM     CLR A
-        "#;
-        let mut tokens = lex(doc);
-        let mut prog = Program::default();
-        let res = document(&mut tokens, &mut prog);
-        assert!(res.is_err());
+        "#,
+            "must be issued on their own",
+        );
+    }
+
+    #[test]
+    fn test_multiple_alu_disallowed() {
+        expect_failing_program("AD2  OR", "Illegal program");
+    }
+
+    #[test]
+    fn test_multiple_3_mov_disallowed() {
+        expect_failing_program("MOV MUL, P  MOV MUL, P  MOV MUL, P", "Illegal program");
+    }
+
+    #[test]
+    fn test_blank() -> color_eyre::Result<()> {
+        validate_program(
+            r#"
+
+
+            "#,
+        )?;
 
         Ok(())
     }
