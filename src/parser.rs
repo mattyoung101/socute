@@ -11,7 +11,7 @@
 
 use bit_ops::BitOps;
 use color_eyre::eyre::eyre;
-use log::debug;
+use log::{debug, warn};
 use logos::Lexer;
 use std::{i8, iter::Peekable};
 
@@ -92,8 +92,15 @@ fn expect(tok: &ScuDspToken, lexer: &mut Peekable<Lexer<ScuDspToken>>) -> color_
     if accept(tok, lexer)? {
         return Ok(true);
     }
+
+    // if we expected equals but we got newline, this is often caused by not running in relaxed
+    // mode
+    if tok == &T::Equals && token(lexer)? == T::Newline {
+        warn!("Note: If this is a legacy document, consider trying again in relaxed mode (--relaxed).");
+    }
+
     Err(eyre!(
-        "Syntax error: Expected {} but got {}",
+        "Syntax error: Expected {} but got {}.",
         &tok.as_ref(),
         token_str(lexer)?
     ))
@@ -135,7 +142,7 @@ fn token_str(lexer: &mut Peekable<Lexer<ScuDspToken>>) -> color_eyre::Result<Str
     }
 }
 
-fn num(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_eyre::Result<u32> {
+fn num(lexer: &mut Peekable<Lexer<ScuDspToken>>) -> color_eyre::Result<u32> {
     if !token(lexer)?.is_number() {
         return Err(eyre!("Syntax error: Expected number"));
     }
@@ -196,7 +203,7 @@ fn alu(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_ey
             token_str(lexer)?
         ));
     }
-    prog.register_emitted(InstrType::ALU);
+    prog.register_emitted(InstrType::Alu);
 
     Ok(())
 }
@@ -231,10 +238,10 @@ fn emit_mov(
     };
 
     match mov {
-        MovDestination::X => prog.register_emitted(InstrType::X_BUS),
-        MovDestination::P => prog.register_emitted(InstrType::X_BUS),
-        MovDestination::Y => prog.register_emitted(InstrType::Y_BUS),
-        MovDestination::A => prog.register_emitted(InstrType::Y_BUS),
+        MovDestination::X => prog.register_emitted(InstrType::XBus),
+        MovDestination::P => prog.register_emitted(InstrType::XBus),
+        MovDestination::Y => prog.register_emitted(InstrType::YBus),
+        MovDestination::A => prog.register_emitted(InstrType::YBus),
     }
 
     match address {
@@ -290,7 +297,7 @@ fn emit_mov_simm(
     lexer: &mut Peekable<Lexer<ScuDspToken>>,
     prog: &mut Program,
 ) -> color_eyre::Result<()> {
-    let value = num(lexer, prog)?;
+    let value = num(lexer)?;
 
     if value >= i8::MAX as u32 {
         return Err(eyre!(
@@ -315,7 +322,7 @@ fn mov(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_ey
             expect(&T::P, lexer)?;
             prog.emit_bit(24);
             // this is an X-bus instr (datasheet pp. 108, pdf pp. 124)
-            prog.register_emitted(InstrType::X_BUS);
+            prog.register_emitted(InstrType::XBus);
             return Ok(());
         }
 
@@ -325,7 +332,7 @@ fn mov(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_ey
             expect(&T::A, lexer)?;
             prog.emit_bit(18);
             // this is a Y-bus instruction (datasheet pp. 114, pdf pp. 114)
-            prog.register_emitted(InstrType::Y_BUS);
+            prog.register_emitted(InstrType::YBus);
             return Ok(());
         }
 
@@ -376,7 +383,7 @@ fn clr(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_ey
     expect(&T::Clr, lexer)?;
     expect(&T::A, lexer)?;
     prog.emit_bit(17);
-    prog.register_emitted(InstrType::Y_BUS);
+    prog.register_emitted(InstrType::YBus);
     Ok(())
 }
 
@@ -398,7 +405,7 @@ fn loop_cmd(
     }
 
     // this probably isn't necessary since we force a newline anyway below, but just in case
-    prog.register_emitted(InstrType::FLOW_CONTROL);
+    prog.register_emitted(InstrType::FlowControl);
 
     // manual pp. 91 (pdf pp. 107) seems to imply that END and LOOP type instructions are
     // completely separate to the normal bundle. The normal bundle can contain ALU, {X,Y,D1}-bus
@@ -429,7 +436,7 @@ fn end(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_ey
     }
 
     // this probably isn't necessary since we force a newline anyway below, but just in case
-    prog.register_emitted(InstrType::FLOW_CONTROL);
+    prog.register_emitted(InstrType::FlowControl);
 
     // manual pp. 91 (pdf pp. 107) seems to imply that END and LOOP type instructions are
     // completely separate to the normal bundle. The normal bundle can contain ALU, {X,Y,D1}-bus
@@ -472,6 +479,7 @@ fn instr(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_
 pub fn document(
     lexer: &mut Peekable<Lexer<ScuDspToken>>,
     prog: &mut Program,
+    relaxed: bool
 ) -> color_eyre::Result<()> {
     while lexer.peek().is_some() {
         let tok = token(lexer)?;
@@ -486,13 +494,34 @@ pub fn document(
         }
 
         // first try match a define
-        // TODO
+        // if a line starts with an ident, we assume they're trying to write a define
+        if tok.is_ident() {
+            lexer.next();
+            // should be X = Y; check eq
+            expect(&T::Equals, lexer)?;
+            let num = num(lexer)?;
+            continue;
+        }
 
         // then try a label
         if tok.is_label() {
-            // TODO
-            lexer.next();
+            match token(lexer)? {
+                T::Label(lab) => {
+                    prog.add_label(lab);
+                }
+                _ => {
+                    // we already checked above tok.is_label(), so this should never happen
+                    panic!("Internal error: Should have been a label!");
+                }
+            }
             continue;
+        }
+
+        // org directive
+        if tok == T::Org {
+            lexer.next();
+            let addr = num(lexer)?;
+            // TODO handle this
         }
 
         // now look for instructions
@@ -520,7 +549,7 @@ mod tests {
 
         let mut tokens = lex(doc);
         let mut prog = Program::default();
-        let res = document(&mut tokens, &mut prog);
+        let res = document(&mut tokens, &mut prog, false);
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().contains(msg));
     }
@@ -528,7 +557,7 @@ mod tests {
     fn validate_program(doc: &'static str) -> color_eyre::Result<()> {
         let mut tokens = lex(doc);
         let mut prog = Program::default();
-        document(&mut tokens, &mut prog)?;
+        document(&mut tokens, &mut prog, false)?;
 
         Ok(())
     }

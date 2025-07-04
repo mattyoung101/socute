@@ -25,14 +25,15 @@ enum Commands {
         src: PathBuf,
 
         /// Destination file
-        dest: PathBuf,
+        dest: Option<PathBuf>,
 
         #[arg(long, action)]
-        /// If true, enforces strict compatibility with the original assembler (not supported yet)
-        strict: bool,
+        /// Relaxes some parsing rules to compile files written for the original assembler on a
+        /// best-effort basis
+        relaxed: bool,
 
         #[arg(long, action)]
-        /// Print parser debug information
+        /// Print internal parser debug information
         debug: bool,
     },
 
@@ -61,7 +62,7 @@ fn main() -> color_eyre::Result<()> {
         Commands::Asm {
             src,
             dest,
-            strict,
+            relaxed,
             debug,
         } => {
             let mut f = File::open(src)?;
@@ -72,7 +73,7 @@ fn main() -> color_eyre::Result<()> {
 
             let mut tokens = lex(string.as_str());
             let mut prog = Program::default();
-            document(&mut tokens, &mut prog)?;
+            document(&mut tokens, &mut prog, relaxed)?;
         }
         Commands::Version {} => {
             println!(

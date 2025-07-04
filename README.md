@@ -40,11 +40,37 @@ SoCUte removes a number of limitations from Sega's original assembler (`dspasm`)
 - Identifiers may be longer than 32 characters
 - Nested `IFDEF` directives may be nested more than 16 levels deep
 
-SoCUte will compile all valid programs written for the original assembler `dspasm`, but programs written
-specifically for SoCUte probably won't compile on the original `dspasm`.
+In the future I will probably add a `--strict-limitations` flag that will raise warnings when an
+incompatibility of this sort is detected.
 
-In the future I will probably add a `--strict` flag that will raise warnings when an incompatibility of this
-sort is detected.
+### Relaxed mode (`--relaxed`)
+Contrary to the official documentation, there are a number of SCU-DSP programs that are written in a
+syntactically **invalid** way, but apparently once compiled on the `dspasm` tool.
+
+Here's an example:
+
+```asm
+;>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+;
+	ORG	0
+;
+START
+;
+	                                                 MOV IMP,CT0
+	                                                 MOV MC0,RA0
+	                                                 MOV CM,CT2
+```
+
+See the problem? `START` is supposed to be a label, and as per the documentation (SCU DSP Assembler manual pp.
+1, PDF pp. 4):
+
+> • When writing labels, begin from the first column, or use a colon “:” at the end
+of the word (ex. LABEL: ).
+
+Clearly, this program is malformed, but somehow it compiled anyway.
+
+So, to combat this, SoCUte includes a `--relaxed` mode that will accept these invalid programs on a
+best-effort basis.
 
 ## Information sources
 - SCU User's Manual, Third edition (Sega Doc. # ST-97-R5-072694), pp. 75-173

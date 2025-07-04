@@ -13,11 +13,11 @@ use log::{debug, info};
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub enum InstrType {
-    ALU,
-    X_BUS,
-    Y_BUS,
-    D1_BUS,
-    FLOW_CONTROL,
+    Alu,
+    XBus,
+    YBus,
+    D1Bus,
+    FlowControl,
 }
 
 #[derive(Default, Clone, Debug)]
@@ -110,7 +110,7 @@ impl Program {
         // ensure only one flow control (JMP, BTM/LOOP, etc)
         if self
             .instr_type_counts
-            .get(&InstrType::FLOW_CONTROL)
+            .get(&InstrType::FlowControl)
             .is_some_and(|it| *it > 1)
         {
             return Err(eyre!(
@@ -121,7 +121,7 @@ impl Program {
         // ensure only one ALU instr per bundle
         if self
             .instr_type_counts
-            .get(&InstrType::ALU)
+            .get(&InstrType::Alu)
             .is_some_and(|it| *it > 1)
         {
             return Err(eyre!(
@@ -145,7 +145,7 @@ impl Program {
 
         if self
             .instr_type_counts
-            .get(&InstrType::X_BUS)
+            .get(&InstrType::XBus)
             .is_some_and(|it| *it > 2)
         {
             return Err(eyre!(
@@ -155,7 +155,7 @@ impl Program {
 
         if self
             .instr_type_counts
-            .get(&InstrType::Y_BUS)
+            .get(&InstrType::YBus)
             .is_some_and(|it| *it > 2)
         {
             return Err(eyre!(
@@ -205,5 +205,9 @@ impl Program {
         for (i, opcode) in self.prog.iter().enumerate() {
             info!("[{}] {:#034b} {:#010x}", i, opcode, opcode);
         }
+    }
+
+    pub fn set_pc(&mut self, pc: u32) {
+        self.pc = pc;
     }
 }

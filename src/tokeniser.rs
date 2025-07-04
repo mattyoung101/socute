@@ -231,6 +231,10 @@ impl ScuDspToken {
     pub fn is_label(&self) -> bool {
         matches!(self, ScuDspToken::Label(_))
     }
+
+    pub fn is_ident(&self) -> bool {
+        matches!(self, ScuDspToken::Ident(_))
+    }
 }
 
 /// Lexes an asm document
