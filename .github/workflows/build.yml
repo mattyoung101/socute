@@ -30,5 +30,5 @@ jobs:
       - name: Archive artefacts
         uses: actions/upload-artifact@v4
         with:
-          name: socute
-          path: target/release/socute
+          name: socute-${{ matrix.os }}
+          path: target/release/socute*
