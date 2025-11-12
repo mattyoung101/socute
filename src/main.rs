@@ -7,6 +7,10 @@
 use std::{fs::File, io::Read, path::PathBuf};
 
 use clap::{Parser, Subcommand};
+use color_eyre::{
+    Section, SectionExt,
+    owo_colors::{AnsiColors, OwoColorize},
+};
 use env_logger::{Builder, Env};
 
 use crate::{emitter::Program, parser::document, tokeniser::lex};
@@ -71,9 +75,27 @@ fn main() -> color_eyre::Result<()> {
             // add extra newline in case file doesn't have its own
             string += "\n";
 
+            let lines: Vec<String> = string.lines().map(|x| x.into()).collect();
+
             let mut tokens = lex(string.as_str());
             let mut prog = Program::default();
-            document(&mut tokens, &mut prog, relaxed)?;
+            let result = document(&mut tokens, &mut prog, relaxed);
+
+            match result {
+                Ok(_) => {}
+                Err(error) => {
+                    let index = prog.line;
+                    let line = match lines.get::<usize>(index as usize) {
+                        Some(l) => l,
+                        None => "error fetching context",
+                    };
+                    // TODO if we're not in --relaxed mode, suggest running --relaxed
+                    return Err(error.with_section(move || {
+                        format!("{} | {}", index, line)
+                            .header("Assembly context:".color(AnsiColors::Green))
+                    }));
+                }
+            }
         }
         Commands::Version {} => {
             println!(

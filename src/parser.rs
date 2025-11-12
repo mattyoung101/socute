@@ -490,6 +490,7 @@ pub fn document(
             prog.flush()?;
             // skip newline
             lexer.next();
+            prog.line += 1;
             continue;
         }
 
@@ -497,9 +498,27 @@ pub fn document(
         // if a line starts with an ident, we assume they're trying to write a define
         if tok.is_ident() {
             lexer.next();
+
+            // in relaxed mode, they might have intended it to be a label
+            if relaxed && token(lexer)? != T::Equals {
+                // TODO we should actually check this is valid to do right
+                debug!("Trying to recover ident -> label in relaxed mode");
+                match tok {
+                    T::Ident(lab) => {
+                        prog.add_label(lab);
+                    }
+                    _ => {
+                        panic!("Internal error: Should have been an ident!");
+                    }
+                }
+                continue;
+            }
+
+            // normal non-relaxed mode
             // should be X = Y; check eq
             expect(&T::Equals, lexer)?;
             let num = num(lexer)?;
+            // TODO handle this
             continue;
         }
 

@@ -42,6 +42,9 @@ pub struct Program {
 
     /// Counts for each instruction type that was emitted
     instr_type_counts: HashMap<InstrType, u32>,
+
+    /// Current line, starting at 0
+    pub line: u32
 }
 
 impl Program {
