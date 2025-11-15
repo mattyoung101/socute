@@ -57,6 +57,36 @@ pub enum ScuDspToken {
     #[regex("(?i)mc3")]
     Mc3,
 
+    #[regex("(?i)rx")]
+    Rx,
+
+    #[regex("(?i)pl")]
+    Pl,
+
+    #[regex("(?i)ra0")]
+    Ra0,
+
+    #[regex("(?i)wa0")]
+    Wa0,
+
+    #[regex("(?i)lop")]
+    Lop,
+
+    #[regex("(?i)top")]
+    Top,
+
+    #[regex("(?i)ct0")]
+    Ct0,
+
+    #[regex("(?i)ct1")]
+    Ct1,
+
+    #[regex("(?i)ct2")]
+    Ct2,
+
+    #[regex("(?i)ct3")]
+    Ct3,
+
     // ALU control
     #[regex("(?i)and")]
     And,

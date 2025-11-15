@@ -43,6 +43,9 @@ pub struct Program {
     /// Counts for each instruction type that was emitted
     instr_type_counts: HashMap<InstrType, u32>,
 
+    /// Defined constants and their values
+    defines: HashMap<String, u32>,
+
     /// Current line, starting at 0
     pub line: u32
 }
@@ -202,6 +205,25 @@ impl Program {
 
     pub fn add_label(&mut self, label: String) {
         self.labels.insert(label, self.pc);
+    }
+
+    pub fn add_define(&mut self, constant: String, value: u32) -> color_eyre::Result<()> {
+        if self.defines.contains_key(&constant) {
+            return Err(eyre!("Definition '{}' has already been declared", constant));
+        }
+
+        self.defines.insert(constant, value);
+
+        Ok(())
+    }
+
+    pub fn resolve_define(&self, constant: String) -> color_eyre::Result<u32> {
+        return if let Some(x) = self.defines.get(&constant) {
+            debug!("Resolve define: '{}' -> {}", constant, *x);
+            Ok(*x)
+        } else {
+            Err(eyre!("Definition '{}' not declared", constant))
+        }
     }
 
     pub fn debug_dump(&self) {

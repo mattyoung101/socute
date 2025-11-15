@@ -12,6 +12,7 @@ use color_eyre::{
     owo_colors::{AnsiColors, OwoColorize},
 };
 use env_logger::{Builder, Env};
+use log::warn;
 
 use crate::{emitter::Program, parser::document, tokeniser::lex};
 
@@ -69,6 +70,10 @@ fn main() -> color_eyre::Result<()> {
             relaxed,
             debug,
         } => {
+            if relaxed {
+                warn!("Running in relaxed mode; use only to parse legacy documents.");
+            }
+
             let mut f = File::open(src)?;
             let mut string = String::new();
             f.read_to_string(&mut string)?;
@@ -91,7 +96,7 @@ fn main() -> color_eyre::Result<()> {
                     };
                     // TODO if we're not in --relaxed mode, suggest running --relaxed
                     return Err(error.with_section(move || {
-                        format!("{} | {}", index, line)
+                        format!("{} |    {}", index + 1, line.trim())
                             .header("Assembly context:".color(AnsiColors::Green))
                     }));
                 }

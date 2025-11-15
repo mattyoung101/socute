@@ -19,3 +19,9 @@ log = "0.4.27"
 logos = "0.15.0"
 strum = { version = "0.27.1", features = ["derive"] }
 strum_macros = "0.27.1"
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1

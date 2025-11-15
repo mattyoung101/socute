@@ -1,4 +1,4 @@
-tokens = "equ org ends if ifdef alh all m0 m1 m2 m3 mc0 mc1 mc2 mc3".split()
+tokens = "rx pl ra0 wa0 lop top ct0 ct1 ct2 ct3".split()
 
 for token in tokens:
     # #[regex("(?i)mov")]

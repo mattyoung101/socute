@@ -69,6 +69,24 @@ const INSTR_TOKENS: &[&T] = &[
     &T::Endi,
 ];
 
+/// All SImm destination addresses
+const SIMM_DEST: &[&T] = &[
+    &T::Mc0,
+    &T::Mc0,
+    &T::Mc2,
+    &T::Mc3,
+    &T::Rx,
+    &T::Pl,
+    &T::Ra0,
+    &T::Wa0,
+    &T::Lop,
+    &T::Top,
+    &T::Ct0,
+    &T::Ct1,
+    &T::Ct2,
+    &T::Ct3,
+];
+
 #[derive(PartialEq, Eq)]
 enum MovDestination {
     X,
@@ -96,7 +114,9 @@ fn expect(tok: &ScuDspToken, lexer: &mut Peekable<Lexer<ScuDspToken>>) -> color_
     // if we expected equals but we got newline, this is often caused by not running in relaxed
     // mode
     if tok == &T::Equals && token(lexer)? == T::Newline {
-        warn!("Note: If this is a legacy document, consider trying again in relaxed mode (--relaxed).");
+        warn!(
+            "Note: If this is a legacy document, consider trying again in relaxed mode (--relaxed)."
+        );
     }
 
     Err(eyre!(
@@ -294,10 +314,26 @@ fn emit_mov(
 }
 
 fn emit_mov_simm(
+    imm: &ScuDspToken,
     lexer: &mut Peekable<Lexer<ScuDspToken>>,
     prog: &mut Program,
 ) -> color_eyre::Result<()> {
-    let value = num(lexer)?;
+    debug!("Parse SImm MOV instr");
+
+    let dest = token_pop(lexer)?;
+    debug!("simm; source: {:?}, dest: {:?}", imm, dest);
+
+    let value = if imm.is_ident() {
+        // we expect this to be a define, so let's resolve it
+        match imm {
+            T::Ident(lab) => prog.resolve_define(lab.to_string())?,
+            _ => {
+                panic!("Internal error: Should have been an ident!");
+            }
+        }
+    } else {
+        num(lexer)?
+    };
 
     if value >= i8::MAX as u32 {
         return Err(eyre!(
@@ -360,10 +396,17 @@ fn mov(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_ey
         }
 
         // MOV SImm, [d]
-        if token(lexer)?.is_number() {
-            emit_mov_simm(lexer, prog)?;
+        // FIXME now that I think about it, I think we're parsing this wrong, why are we looking at
+        // SIMM_DEST? we should be looking for numbers or labels
+        // specifically checking if tok is one of those, an ident or num
+        // or; well; we should be doing both to disambiguate this from MOV [s], [d] -> check if
+        // BOTH "tok" from before is a number or label, AND [d] is a valid MOV SImm destination
+        if SIMM_DEST.contains(&&token(lexer)?) {
+            emit_mov_simm(&tok, lexer, prog)?;
             return Ok(());
         }
+
+        // TODO support MOV [s], [d]
 
         // otherwise, illegal
         Err(eyre!(
@@ -479,7 +522,7 @@ fn instr(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_
 pub fn document(
     lexer: &mut Peekable<Lexer<ScuDspToken>>,
     prog: &mut Program,
-    relaxed: bool
+    relaxed: bool,
 ) -> color_eyre::Result<()> {
     while lexer.peek().is_some() {
         let tok = token(lexer)?;
@@ -515,10 +558,17 @@ pub fn document(
             }
 
             // normal non-relaxed mode
-            // should be X = Y; check eq
+            // should be in the form X = Y; check eq
             expect(&T::Equals, lexer)?;
             let num = num(lexer)?;
-            // TODO handle this
+            match tok {
+                T::Ident(lab) => {
+                    prog.add_define(lab, num)?;
+                }
+                _ => {
+                    panic!("Internal error: Should have been an ident!");
+                }
+            }
             continue;
         }
 
@@ -556,6 +606,8 @@ pub fn document(
 
     Ok(())
 }
+
+// TODO move these to another file; see how some bigger rust projects do it?
 
 #[cfg(test)]
 mod tests {
@@ -672,6 +724,46 @@ mod tests {
 
             "#,
         )?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_define() -> color_eyre::Result<()> {
+        validate_program(
+            r#"
+            ONE	=	$10000		; =1
+            MSZ	=	12		; Matrix Size
+        "#,
+        )?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_multiple_defines() -> color_eyre::Result<()> {
+        expect_failing_program(
+            r#"
+            ONE	=	$10000		; =1
+            MSZ	=	12		; Matrix Size
+            ONE	=	$10000		; =1
+        "#,
+            "has already been declared",
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_not_defined() -> color_eyre::Result<()> {
+        expect_failing_program(
+            r#"
+            ONE	=	$10000		; =1
+            MOV FOOBAR, CT0
+
+        "#,
+            "not declared",
+        );
 
         Ok(())
     }
