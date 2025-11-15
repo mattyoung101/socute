@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-2022]
+        os: [ubuntu-22.04, windows-2022, macos-14-large, macos-14-xlarge]
     steps:
       - uses: actions/checkout@v5
 
@@ -27,8 +27,19 @@ jobs:
       - name: Compile
         run: cargo build --release
 
-      - name: Archive artefacts
+      - name: Run tests
+        run: cargo test
+
+      - name: Archive artefacts (Windows)
         uses: actions/upload-artifact@v4
         with:
           name: socute-${{ matrix.os }}
-          path: target/release/socute*
+          path: target/release/socute.exe
+        if: matrix.os == 'windows-2022'
+
+      - name: Archive artefacts (Unix)
+        uses: actions/upload-artifact@v4
+        with:
+          name: socute-${{ matrix.os }}
+          path: target/release/socute
+        if: matrix.os != 'windows-2022'
