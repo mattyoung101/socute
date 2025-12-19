@@ -8,6 +8,7 @@
 // References:
 // - https://en.wikipedia.org/wiki/Recursive_descent_parser#C_implementation
 // - https://github.com/maciejhirsz/logos/issues/82
+// - SCU User's Manual Third version Doc. # ST-97-R5-072694
 
 use bit_ops::BitOps;
 use color_eyre::eyre::eyre;
@@ -323,6 +324,8 @@ fn emit_mov_simm(
     let dest = token_pop(lexer)?;
     debug!("simm; source: {:?}, dest: {:?}", imm, dest);
 
+    // FIXME this might not allow negative numbers
+    // perhaps should be an i32
     let value = if imm.is_ident() {
         // we expect this to be a define, so let's resolve it
         match imm {
@@ -341,9 +344,33 @@ fn emit_mov_simm(
         ));
     }
 
-    // let word = 0_u32.set_bits_exact(value as i8, 8, 0);
+    // calculate the opcode, and OR in the immediate value
+    // the IMM value occupies bits 0..7
+    // FIXME we might have the sign wrong here, need to force it into twos comp? and possibly Sext
+    let opcode = 0_u32.set_bit(12) | ((value as i8) as u32);
 
-    // TODO
+    match dest {
+        // FIXME handle DATA RAM0..3, CT0..3++
+        T::Rx => prog.emit(opcode.set_bit(10)),             // 0100
+        T::Pl => prog.emit(opcode.set_bit(10).set_bit(8)),  // 0101
+        T::Ra0 => prog.emit(opcode.set_bit(10).set_bit(9)), // 0110
+        T::Wa0 => prog.emit(opcode.set_bit(10).set_bit(9).set_bit(8)), // 0111
+        // 1000 and 1001 are unused according to the datasheet
+        T::Lop => prog.emit(opcode.set_bit(11).set_bit(9)), // 1010
+        T::Top => prog.emit(opcode.set_bit(11).set_bit(9).set_bit(8)), // 1011
+        T::Ct0 => prog.emit(opcode.set_bit(11).set_bit(10)), // 1100
+        T::Ct1 => prog.emit(opcode.set_bit(11).set_bit(10).set_bit(8)), // 1101
+        T::Ct2 => prog.emit(opcode.set_bit(11).set_bit(10).set_bit(9)), // 1110
+        T::Ct3 => prog.emit(opcode.set_bit(11).set_bit(10).set_bit(9).set_bit(8)), // 1111
+        _ => {
+            return Err(eyre!(
+                "Syntax error: Illegal SImm MOV destination address, got: {}",
+                dest.as_ref()
+            ));
+        }
+    }
+
+    prog.register_emitted(InstrType::D1Bus);
 
     Ok(())
 }
@@ -396,12 +423,10 @@ fn mov(lexer: &mut Peekable<Lexer<ScuDspToken>>, prog: &mut Program) -> color_ey
         }
 
         // MOV SImm, [d]
-        // FIXME now that I think about it, I think we're parsing this wrong, why are we looking at
-        // SIMM_DEST? we should be looking for numbers or labels
-        // specifically checking if tok is one of those, an ident or num
-        // or; well; we should be doing both to disambiguate this from MOV [s], [d] -> check if
-        // BOTH "tok" from before is a number or label, AND [d] is a valid MOV SImm destination
-        if SIMM_DEST.contains(&&token(lexer)?) {
+        // we first check if tok is an ident (in that case, it would be a define), or a number,
+        // both of which are valid for SImm. Then, to disambiguate it from MOV [s], [d] -> we ALSO
+        // check if the destination is a valid MOV Simm, [d] destination address
+        if (tok.is_number() || tok.is_ident()) && (SIMM_DEST.contains(&&token(lexer)?)) {
             emit_mov_simm(&tok, lexer, prog)?;
             return Ok(());
         }
@@ -548,7 +573,7 @@ pub fn document(
                 debug!("Trying to recover ident -> label in relaxed mode");
                 match tok {
                     T::Ident(lab) => {
-                        prog.add_label(lab);
+                        prog.add_label(lab)?;
                     }
                     _ => {
                         panic!("Internal error: Should have been an ident!");
@@ -576,7 +601,7 @@ pub fn document(
         if tok.is_label() {
             match token(lexer)? {
                 T::Label(lab) => {
-                    prog.add_label(lab);
+                    prog.add_label(lab)?;
                 }
                 _ => {
                     // we already checked above tok.is_label(), so this should never happen

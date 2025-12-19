@@ -171,6 +171,7 @@ impl Program {
 
         // finally, let's also check to make sure they're not issuing more than 6 instructions per
         // bundle
+        // TODO where the hell did we get the number 6 from?
         if self.instr_type_counts.values().sum::<u32>() > 6 {
             return Err(eyre!(
                 "Illegal program: More than 6 instructions issued in a single bundle"
@@ -203,10 +204,18 @@ impl Program {
         Ok(())
     }
 
-    pub fn add_label(&mut self, label: String) {
+    /// Adds a label or throws an error if it already exists
+    pub fn add_label(&mut self, label: String) -> color_eyre::Result<()> {
+        if self.labels.contains_key(&label) {
+            return Err(eyre!("Label '{}' has already been declared", label));
+        }
+
         self.labels.insert(label, self.pc);
+
+        Ok(())
     }
 
+    /// Adds a define or throws an error if the define already exists
     pub fn add_define(&mut self, constant: String, value: u32) -> color_eyre::Result<()> {
         if self.defines.contains_key(&constant) {
             return Err(eyre!("Definition '{}' has already been declared", constant));
@@ -217,6 +226,7 @@ impl Program {
         Ok(())
     }
 
+    /// Locates the value for a definition or throws an error
     pub fn resolve_define(&self, constant: String) -> color_eyre::Result<u32> {
         return if let Some(x) = self.defines.get(&constant) {
             debug!("Resolve define: '{}' -> {}", constant, *x);
