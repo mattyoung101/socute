@@ -13,8 +13,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Setup Rust toolchain
-        # https://codeberg.org/wackbyte/rust-toolchain
-        uses: wackbyte/rust-toolchain@trunk
+        uses: "https://codeberg.org/wackbyte/rust-toolchain"
 
       - name: Compile
         run: cargo build --release
