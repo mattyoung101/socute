@@ -13,12 +13,8 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Setup Rust toolchain
-        uses: https://github.com/actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-
-      - name: Setup sccache
-        uses: https://github.com/mozilla-actions/sccache-action@v0.0.9
+        # https://codeberg.org/wackbyte/rust-toolchain
+        uses: wackbyte/rust-toolchain@trunk
 
       - name: Compile
         run: cargo build --release
