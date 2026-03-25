@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     name: Build
-    runs-on: lagoon
+    runs-on: ubuntu-22.04
     env:
       RUSTC_WRAPPER: sccache
     steps:
