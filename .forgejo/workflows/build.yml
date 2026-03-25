@@ -6,13 +6,9 @@ on:
 jobs:
   build:
     name: Build
-    runs-on: ${{ matrix.os }}
+    runs-on: lagoon
     env:
       RUSTC_WRAPPER: sccache
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-22.04, windows-2022]
     steps:
       - uses: actions/checkout@v5
 

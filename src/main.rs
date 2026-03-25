@@ -1,6 +1,6 @@
 // SoCUte: An assembler for the Sega Saturn SCU DSP.
 //
-// Copyright (c) 2025 Matt Young.
+// Copyright (c) 2025 M. L.  Young.
 //
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL
 // was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
@@ -106,7 +106,7 @@ fn main() -> color_eyre::Result<()> {
             println!(
                 "SoCUte v{VERSION}: Sega Saturn SCU DSP Assembler <https://github.com/mattyoung101/socute>"
             );
-            println!("Copyright (c) 2025 Matt Young. Mozilla Public License v2.0.");
+            println!("Copyright (c) 2025 M. L.  Young. Mozilla Public License v2.0.");
         }
     }
 
