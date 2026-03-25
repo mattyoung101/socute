@@ -7,8 +7,6 @@ jobs:
   build:
     name: Build
     runs-on: lagoon
-    env:
-      RUSTC_WRAPPER: sccache
     steps:
       - uses: actions/checkout@v5
 
