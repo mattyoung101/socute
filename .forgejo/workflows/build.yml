@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    name: Build
+    name: Build and Test
     runs-on: lagoon
     steps:
       - uses: actions/checkout@v5
@@ -15,11 +15,8 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Compile
-        run: cargo build --release
+      - name: Compile (debug)
+        run: cargo build
 
-      - name: Archive artefacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: socute-${{ matrix.os }}
-          path: target/release/socute*
+      - name: Test (debug)
+        run: cargo test
