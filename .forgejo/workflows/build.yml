@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     name: Build and Test
-    runs-on: lagoon
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v5
 
@@ -20,3 +20,9 @@ jobs:
 
       - name: Test (debug)
         run: cargo test
+
+      - name: Compile (release)
+        run: cargo build --release
+
+      - name: Test (release)
+        run: cargo test --release
