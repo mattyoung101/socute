@@ -22,39 +22,26 @@ pub mod tokeniser;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-#[derive(Debug, Subcommand)]
-enum Commands {
-    /// Assemble a single SCU DSP source file
-    Asm {
-        /// Source file
-        src: PathBuf,
-
-        /// Destination file
-        dest: Option<PathBuf>,
-
-        #[arg(long, action)]
-        /// Relaxes some parsing rules to compile files written for the original assembler on a
-        /// best-effort basis
-        relaxed: bool,
-
-        #[arg(long, action)]
-        /// Print internal parser debug information
-        debug: bool,
-    },
-
-    /// Prints version information.
-    #[command()]
-    Version {},
-}
-
 #[derive(Debug, Parser)] // requires `derive` feature
 #[command(name = "socute")]
 #[command(
-    about = format!("SoCUte v{VERSION}: Sega Saturn SCU DSP Assembler"),
+    about = format!("SoCUte v{VERSION}: Sega Saturn SCU DSP Assembler\nCopyright (c) 2025 M. L. Young. MPL 2.0."),
 )]
 struct SoCuteCli {
-    #[command(subcommand)]
-    command: Commands,
+    /// Source file
+    src: PathBuf,
+
+    /// Destination file
+    dest: Option<PathBuf>,
+
+    #[arg(long, action)]
+    /// Relaxes some parsing rules to compile files written for the original assembler on a
+    /// best-effort basis
+    relaxed: bool,
+
+    #[arg(long, action)]
+    /// Print internal parser debug information
+    debug: bool,
 }
 
 fn main() -> color_eyre::Result<()> {
@@ -63,50 +50,40 @@ fn main() -> color_eyre::Result<()> {
     Builder::from_env(env).init();
     color_eyre::install()?;
 
-    match args.command {
-        Commands::Asm {
-            src,
-            dest,
-            relaxed,
-            debug,
-        } => {
-            if relaxed {
-                warn!("Running in relaxed mode; use only to parse legacy documents.");
-            }
+    println!(
+        "SoCUte v{VERSION}: Sega Saturn SCU DSP Assembler (https://codeberg.org/mlyoung101/socute)"
+    );
+    println!("Copyright (c) 2025 M. L. Young. Available under the Mozilla Public License v2.0.");
 
-            let mut f = File::open(src)?;
-            let mut string = String::new();
-            f.read_to_string(&mut string)?;
-            // add extra newline in case file doesn't have its own
-            string += "\n";
+    if args.relaxed {
+        warn!("Running in relaxed mode; use only to parse legacy documents.");
+    }
 
-            let lines: Vec<String> = string.lines().map(|x| x.into()).collect();
+    let mut f = File::open(args.src)?;
+    let mut string = String::new();
+    f.read_to_string(&mut string)?;
+    // add extra newline in case file doesn't have its own
+    string += "\n";
 
-            let mut tokens = lex(string.as_str());
-            let mut prog = Program::default();
-            let result = document(&mut tokens, &mut prog, relaxed);
+    let lines: Vec<String> = string.lines().map(|x| x.into()).collect();
 
-            match result {
-                Ok(_) => {}
-                Err(error) => {
-                    let index = prog.line;
-                    let line = match lines.get::<usize>(index as usize) {
-                        Some(l) => l,
-                        None => "error fetching context",
-                    };
-                    // TODO if we're not in --relaxed mode, suggest running --relaxed
-                    return Err(error.with_section(move || {
-                        format!("{} |    {}", index + 1, line.trim())
-                            .header("Assembly context:".color(AnsiColors::Green))
-                    }));
-                }
-            }
-        }
-        Commands::Version {} => {
-            println!(
-                "SoCUte v{VERSION}: Sega Saturn SCU DSP Assembler <https://github.com/mattyoung101/socute>"
-            );
-            println!("Copyright (c) 2025 M. L.  Young. Mozilla Public License v2.0.");
+    let mut tokens = lex(string.as_str());
+    let mut prog = Program::default();
+    let result = document(&mut tokens, &mut prog, args.relaxed);
+
+    match result {
+        Ok(_) => {}
+        Err(error) => {
+            let index = prog.line;
+            let line = match lines.get::<usize>(index as usize) {
+                Some(l) => l,
+                None => "error fetching context",
+            };
+            // TODO if we're not in --relaxed mode, suggest running --relaxed
+            return Err(error.with_section(move || {
+                format!("{} |    {}", index + 1, line.trim())
+                    .header("Assembly context:".color(AnsiColors::Green))
+            }));
         }
     }
 
