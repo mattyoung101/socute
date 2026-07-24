@@ -3,9 +3,9 @@ name = "socute"
 description = "Sega Saturn SCU DSP assembler"
 version = "0.1.0"
 edition = "2024"
-authors = ["M. L.  Young"]
-homepage = "https://codeberg.org/mlyoung101/socute"
-repository = "https://codeberg.org/mlyoung101/socute"
+authors = ["Matt Young"]
+homepage = "https://github.com/mattyoung101/socute"
+repository = "https://github.com/mattyoung101/socute"
 license = "MPL-2.0"
 
 [dependencies]

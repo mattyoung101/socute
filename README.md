@@ -81,6 +81,6 @@ The above are technically Sega confidential, but easily obtainable e.g.
 [here](https://segaretro.org/Saturn_official_documentation), [here](https://antime.kapsi.fi/sega/docs.html)
 
 ## Licence
-Copyright (c) 2025 M. L.  Young.
+Copyright (c) 2025 Matt Young.
 
 SoCUte is licenced under the Mozilla Public License v2.0.
