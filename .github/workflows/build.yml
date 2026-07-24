@@ -5,24 +5,33 @@ on:
 
 jobs:
   build:
-    name: Build and Test
-    runs-on: ubuntu-22.04
+    name: Build
+    runs-on: ${{ matrix.os }}
+    env:
+      RUSTC_WRAPPER: sccache
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
     steps:
       - uses: actions/checkout@v5
 
       - name: Setup Rust toolchain
-        uses: https://codeberg.org/wackbyte/rust-toolchain@trunk
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: stable
+          rustflags: ""
 
-      - name: Compile (debug)
-        run: cargo build
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
 
-      - name: Test (debug)
-        run: cargo test
-
-      - name: Compile (release)
+      - name: Compile
         run: cargo build --release
 
-      - name: Test (release)
+      - name: Test
         run: cargo test --release
+
+      - name: Archive artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: socute-${{ matrix.os }}
+          path: target/release/socute*
